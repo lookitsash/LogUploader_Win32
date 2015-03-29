@@ -1,0 +1,16 @@
+Generate a program which can
+
+1. Find a directory on a filesystem.
+2. Compress it and all of its content.
+3. Display a dialog box asking the user if they would like to send this to a remote server and display the filesize.
+4. If no exit
+5. If yes make a HTTP POST request to a remote server with the body being the zipped contents of the directory.
+6. Display a dialog box with progress, estimated time to completion and a cancel button
+7. On upload completion record the response body which will valid JSON and contain a text reference number. 
+8. Display a 'thank you' dialog containing the reference number 
+9. Exit
+
+We require support for osx 10.8 (and newer) and windows xp (and newer).
+
+The application executable for both operating systems should be small (~1Mb but this isn't a hard limit) and standalone (it must be a one click executable - a .exe for win and a .dmg for osx). The application must be digitally signed. We know how to do this for exe's on Windows but not .dmgs on osx (but have the appropriate certificates to do this).
+
