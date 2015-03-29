@@ -10,6 +10,17 @@
 #include <shlobj.h>
 #include <stdio.h>
 
+#include <iostream>
+#include <stdlib.h>
+
+#ifdef _WIN32
+# include <winsock2.h>
+#else
+#include <sys/socket.h> /* socket, connect */
+#include <netinet/in.h> /* struct sockaddr_in, struct sockaddr */
+#include <netdb.h> /* struct hostent, gethostbyname */
+#endif
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "miniz.c"
@@ -51,9 +62,13 @@ HINSTANCE hInst;								// current instance
 TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 
-BOOL FolderCompressionInProgress;
+BOOL FolderCompressionInProgress = FALSE;
+HWND hWnd;
 HWND hwndPB;
 HWND hwndPBLabel;
+char *targetZIPFile = NULL;
+char *targetZIPFileSizeDesc = NULL;
+BOOL FolderCompressionSuccess = FALSE;
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -66,6 +81,109 @@ mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile);
 mz_bool AddFolderToZipArchive(mz_zip_archive* zipArchive, const char *path, const char *relativePath);
 void listdir (const char *path);
 DWORD WINAPI ThreadRoutine(LPVOID lpArg);
+BOOL ProcessUpload();
+
+BOOL ProcessUpload () {
+	WSADATA wsaData = {0};
+	// Initialize Winsock
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{
+        //wprintf(L"WSAStartup failed: %d\n", iResult);
+        return FALSE;
+    }
+
+	/* first what are we going to send and where are we going to send it? */
+    //int portno =        80;
+	int portno =        50302;
+    //char *host =        "http://localhost:50302/Default.aspx";
+	char *host = "localhost";
+    char *message_fmt = "POST /Default.aspx?a=b&c=d&e=f HTTP/1.0\n\n";
+
+    struct hostent *server;
+    struct sockaddr_in serv_addr;
+    int sockfd, bytes, sent, received, total;
+    //char message[1024],response[4096];
+	
+	char* message = (char*)malloc(1024);
+	message[0] = NULL;
+
+	int responseBufferLen = 4096;
+	char* response = (char*)malloc(responseBufferLen);
+	response[0] = NULL;
+	
+	/* fill in the parameters */
+    sprintf(message,message_fmt,"key1","command1");
+
+	/* create the socket */
+    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sockfd < 0)
+	{
+		//error("ERROR opening socket");
+		return FALSE;
+	}
+
+	/* lookup the ip address */
+    server = gethostbyname(host);
+    if (server == NULL)
+	{
+		//error("ERROR, no such host");
+		return FALSE;
+	}
+
+	/* fill in the structure */
+    memset(&serv_addr,0,sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(portno);
+    memcpy(&serv_addr.sin_addr.s_addr,server->h_addr,server->h_length);
+
+	/* connect the socket */
+    if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)
+	{
+        //error("ERROR connecting");
+		return FALSE;
+	}
+
+	/* send the request */
+    total = strlen(message);
+    sent = 0;
+    do {
+        bytes = send(sockfd,message+sent,total-sent,0);
+        if (bytes < 0)
+		{
+            //error("ERROR writing message to socket");
+			return FALSE;
+		}
+        if (bytes == 0)
+            break;
+        sent+=bytes;
+    } while (sent < total);
+
+    /* receive the response */
+    memset(response,0,responseBufferLen);
+    total = responseBufferLen-1;
+    received = 0;
+    do {
+        bytes = recv(sockfd,response-received,total-received,0);
+        if (bytes < 0)
+		{
+            //error("ERROR reading response from socket");
+			return FALSE;
+		}
+        if (bytes == 0)
+            break;
+        received+=bytes;
+    } while (received < total);
+
+	/* close the socket */
+    closesocket(sockfd);
+
+	//free(message);
+	//free(response);
+
+	WSACleanup();
+
+	return TRUE;
+}
 
 void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
 {
@@ -123,14 +241,30 @@ DWORD WINAPI ThreadRoutine(LPVOID lpArg)
 		struct stat sb;
 		if (stat(folderToCompress, &sb) == 0 && S_ISDIR(sb.st_mode)) // Check if target folder exists to zip up
 		{
-			char *targetZIPFile = (char *)malloc( 1024 );
+			targetZIPFile = (char *)malloc( 1024 );
 			wcstombs(targetZIPFile, userFolder, 1024);
 			strcat(targetZIPFile, "\\.printnodeArchive.zip");
 			
-			//mz_bool zipSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
-			mz_bool zipSuccess = ZipFolder("E:\\Pictures\\test\\Subcategories", targetZIPFile); // Zip up target folder
-
-			free(targetZIPFile);
+			FolderCompressionSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
+			//FolderCompressionSuccess = ZipFolder("E:\\Pictures\\test\\Subcategories", targetZIPFile); // Zip up target folder
+			if (FolderCompressionSuccess)
+			{
+				if (stat(targetZIPFile, &sb) == 0)
+				{
+					long fileSizeBytes = sb.st_size;
+					double fileSizeKB = (double)fileSizeBytes / 1024.0;
+					targetZIPFileSizeDesc = (char *)malloc( 255 );
+					targetZIPFileSizeDesc[0] = NULL;
+					if (fileSizeBytes < 1024) sprintf(targetZIPFileSizeDesc, "%i bytes", fileSizeBytes);
+					else if (fileSizeKB < 1024) sprintf(targetZIPFileSizeDesc, "%.0f KB", fileSizeKB);
+					else
+					{
+						double fileSizeMB = fileSizeKB / 1024.0;
+						sprintf(targetZIPFileSizeDesc, "%.1f MB", fileSizeMB);
+					}
+				}
+			}
+			//free(targetZIPFile);
 		}
 		else
 		{
@@ -148,9 +282,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
                      LPTSTR    lpCmdLine,
                      int       nCmdShow)
 {
-	//ZipEntry* zipEntries = malloc(
-	//AddFolderToZipArchive("C:\\Users\\akhan.COLLAGES\\.printnode","");
-	//return FALSE;
 
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
@@ -397,13 +528,15 @@ int main ()
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	
-
-   HWND hWnd;
-
    hInst = hInstance; // Store instance handle in our global variable
 
+   int windowWidth = 400;
+   int windowHeight = 200;
+   const int windowXPos = (GetSystemMetrics(SM_CXSCREEN) - windowWidth) / 2;
+   const int windowYPos = (GetSystemMetrics(SM_CYSCREEN) - windowHeight) / 2;
+
    hWnd = CreateWindow(szWindowClass, L"Log Uploader", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-      CW_USEDEFAULT, 0, 400, 200, NULL, NULL, hInstance, NULL);
+      windowXPos, windowYPos, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
    {
@@ -468,6 +601,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if ( wParam == 1 ) {
 			if (!FolderCompressionInProgress)
 			{
+				KillTimer(hWnd, 1);
+				if (FolderCompressionSuccess)
+				{
+					char msg[1024];
+					sprintf(msg,"Are you ready to upload the log files?\n\nUpload Size: %s", targetZIPFileSizeDesc);
+
+					wchar_t wtext[1024];
+					mbstowcs(wtext, msg, strlen(msg)+1);//Plus null
+					if (MessageBox(hWnd, wtext, L"Upload Confirmation", MB_YESNO | MB_ICONQUESTION) == IDYES)
+					{
+						BOOL uploadSuccess = ProcessUpload();
+						if (uploadSuccess) {
+							BOOL b = FALSE;
+						}
+					}
+					else PostQuitMessage(1);
+				}
+				else
+				{
+				}
+
 				DestroyWindow(hwndPB);
 				DestroyWindow(hwndPBLabel);
 			}
