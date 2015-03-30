@@ -363,8 +363,7 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 			wcstombs(targetZIPFile, userFolder, 1024);
 			strcat(targetZIPFile, "\\.printnodeArchive.zip");
 			
-			FolderCompressionSuccess = TRUE; //ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
-			//FolderCompressionSuccess = ZipFolder("E:\\Pictures\\test\\Subcategories", targetZIPFile); // Zip up target folder
+			FolderCompressionSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
 			if (FolderCompressionSuccess)
 			{
 				if (stat(targetZIPFile, &sb) == 0)
