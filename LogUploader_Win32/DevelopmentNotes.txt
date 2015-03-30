@@ -14,3 +14,21 @@ We require support for osx 10.8 (and newer) and windows xp (and newer).
 
 The application executable for both operating systems should be small (~1Mb but this isn't a hard limit) and standalone (it must be a one click executable - a .exe for win and a .dmg for osx). The application must be digitally signed. We know how to do this for exe's on Windows but not .dmgs on osx (but have the appropriate certificates to do this).
 
+***
+
+The higher ups have given this the 'go ahead' we'll be accepting your quote. Can you confirm a couple of things first?
+
+1. Your quote includes the two executables and all the source required to build these.
+2. An idea on delivery timelines. This isn't a rush job and we understand the development process (and the difficulties in estimating work times) so we can be relaxed about this.
+
+They've also asked me to add some additional detail to clarify the spec. All little things.
+
+1. Executables which display our companies icon when viewed in explore and finder. We have the .ico and .icns files respectively for these.
+2. The folder to compress is relative to the users home directory (the environment variable %HOMEPATH% in windows or and the equivalent in osx,  ~ (that's meant to be a tilda but isn't working in guru's text field?!).
+3. A couple of HTTP headers need to be set with the POST request; specifically content-length and user-agent. Also the content-type header should be set to application/binary,.
+4. The HTTP upload must be tolerant of failures. Nothing exotic here but we can expect internet connections to drop during a big upload and we should handle them gracefully with a appropriate error message and a 'call to action' like 'application closing - please retry' or just a plain retry/cancel dialog.
+5. The application should run on the stock operating systems (e.g. you can't assume a .net 4.5 redistribute).
+
+Umm, that's it I think. If any of the above is a problem please don't hesitate to let me know and we'll try work something out.
+
+Peter

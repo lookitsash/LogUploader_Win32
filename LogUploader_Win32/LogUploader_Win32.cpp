@@ -13,6 +13,8 @@
 #include <iostream>
 #include <stdlib.h>
 
+#include <wininet.h>
+
 #ifdef _WIN32
 # include <winsock2.h>
 #else
@@ -84,6 +86,85 @@ DWORD WINAPI ThreadRoutine(LPVOID lpArg);
 BOOL ProcessUpload();
 
 BOOL ProcessUpload () {
+	char frmdataPrefix[] = "-----------------------------7d82751e2bc0858\nContent-Disposition: form-data; name=\"uploadedfile\"; filename=\".printnodeArchive.zip\"\nContent-Type: application/binary\n\n";
+	char frmdataSuffix[] = "\n-----------------------------7d82751e2bc0858--"; 
+    static TCHAR hdrs[] = L"Content-Type: multipart/form-data; boundary=---------------------------7d82751e2bc0858"; 
+
+	BOOL success = TRUE;
+
+    HINTERNET hSession = NULL;
+	HINTERNET hConnect = NULL;
+	HINTERNET hRequest = NULL;
+	char* buffer = NULL;
+
+	hSession = InternetOpen(L"MyAgent",INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    if(hSession==NULL)
+    {
+		//cout<<"Error: InternetOpen";  
+		success = FALSE;
+    }
+
+	if (success)
+	{
+		hConnect = InternetConnect(hSession, L"localhost",50302, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
+		if(hConnect==NULL)
+		{
+			//cout<<"Error: InternetConnect";  
+			success = FALSE;
+		}
+
+		if (success)
+		{
+			hRequest = HttpOpenRequest(hConnect, L"POST",L"/Default.aspx", NULL, NULL, NULL, 0, 1);
+			if(hRequest==NULL)
+			{
+				//cout<<"Error: HttpOpenRequest";  
+				success = FALSE;
+			}
+
+			if (success)
+			{
+				FILE *f = fopen(targetZIPFile, "rb");
+				if (f)
+				{
+					long len = 0;
+					fseek(f, 0x00, SEEK_END);
+					len = ftell(f);
+					fseek(f, 0x00, SEEK_SET);
+					long bufferLen = len+strlen(frmdataPrefix)+strlen(frmdataSuffix)+2;
+					buffer = (char*)malloc(bufferLen);
+	
+					char* bufferPtr = buffer;
+					sprintf(bufferPtr,"%s",frmdataPrefix);
+					bufferPtr += strlen(frmdataPrefix);
+					fread(bufferPtr, sizeof(char), len, f);
+					bufferPtr += len;
+					sprintf(bufferPtr,"%s",frmdataSuffix);
+					fclose(f);
+
+					BOOL sent= HttpSendRequest(hRequest, hdrs, lstrlen(hdrs), buffer, bufferLen-2);
+					if(!sent)
+					{
+						//cout<<"Error: HttpSendRequest";
+						success = FALSE;
+					}
+				}
+				else success = FALSE;
+			}
+		}
+	}
+	
+	if (buffer != NULL) free(buffer);
+
+    //close any valid internet-handles
+    if (hSession != NULL) InternetCloseHandle(hSession);
+    if (hConnect != NULL) InternetCloseHandle(hConnect);
+    if (hRequest != NULL) InternetCloseHandle(hRequest);
+
+	return success;
+}
+/*
+BOOL ProcessUpload () {
 	WSADATA wsaData = {0};
 	// Initialize Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
@@ -92,7 +173,6 @@ BOOL ProcessUpload () {
         return FALSE;
     }
 
-	/* first what are we going to send and where are we going to send it? */
     //int portno =        80;
 	int portno =        50302;
     //char *host =        "http://localhost:50302/Default.aspx";
@@ -111,10 +191,8 @@ BOOL ProcessUpload () {
 	char* response = (char*)malloc(responseBufferLen);
 	response[0] = NULL;
 	
-	/* fill in the parameters */
     sprintf(message,message_fmt,"key1","command1");
 
-	/* create the socket */
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd < 0)
 	{
@@ -122,7 +200,6 @@ BOOL ProcessUpload () {
 		return FALSE;
 	}
 
-	/* lookup the ip address */
     server = gethostbyname(host);
     if (server == NULL)
 	{
@@ -130,35 +207,41 @@ BOOL ProcessUpload () {
 		return FALSE;
 	}
 
-	/* fill in the structure */
     memset(&serv_addr,0,sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(portno);
     memcpy(&serv_addr.sin_addr.s_addr,server->h_addr,server->h_length);
 
-	/* connect the socket */
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)
 	{
         //error("ERROR connecting");
 		return FALSE;
 	}
 
-	/* send the request */
-    total = strlen(message);
-    sent = 0;
-    do {
-        bytes = send(sockfd,message+sent,total-sent,0);
-        if (bytes < 0)
-		{
-            //error("ERROR writing message to socket");
-			return FALSE;
-		}
-        if (bytes == 0)
-            break;
-        sent+=bytes;
-    } while (sent < total);
 
-    /* receive the response */
+	FILE *f = fopen(targetZIPFile, "rb");
+	if (!f)         throw;
+	long len = 0;
+	fseek(f, 0x00, SEEK_END);
+	len = ftell(f);
+	fseek(f, 0x00, SEEK_SET);
+	char header[1024];
+	char *buffer = new char[len];
+	fread(buffer, sizeof(char), len, f);
+	sprintf(header,
+			"POST /Default.aspx HTTP/1.1\r\n"
+			"Host: 123.17.25.123\r\n"
+			"User-Agent: Mozilla Firefox/4.0\r\n"
+			"Content-Length: %d\r\n"
+			"Content-Type: application/binary\r\n"
+			"Accept-Charset: utf-8\r\n\r\n",
+			len+4);
+	//std::cout << header << std::endl;
+	send(sockfd, header, strlen(header), 0);
+	send(sockfd, "dat=", 4, 0);
+	send(sockfd, buffer, strlen(buffer), 0);
+	send(sockfd, "\r\n", 2, 0);
+	
     memset(response,0,responseBufferLen);
     total = responseBufferLen-1;
     received = 0;
@@ -174,7 +257,6 @@ BOOL ProcessUpload () {
         received+=bytes;
     } while (received < total);
 
-	/* close the socket */
     closesocket(sockfd);
 
 	//free(message);
@@ -184,6 +266,7 @@ BOOL ProcessUpload () {
 
 	return TRUE;
 }
+*/
 
 void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
 {
