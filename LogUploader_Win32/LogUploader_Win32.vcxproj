@@ -76,9 +76,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="DevelopmentNotes.txt" />
-    <None Include="LogUploader_Win32.ico" />
+    <None Include="E:\Downloads\LogUploader_Win32.ico">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="icon1.ico" />
     <None Include="ReadMe.txt" />
-    <None Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LogUploader_Win32.h" />

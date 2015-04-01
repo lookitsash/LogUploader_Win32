@@ -60,14 +60,24 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 
 BOOL FolderCompressionInProgress = FALSE;
 BOOL FolderCompressionSuccess = FALSE;
+BOOL FolderFound = FALSE;
 BOOL UploadInProgress = FALSE;
 BOOL UploadSuccess = FALSE;
 HWND hWnd;
 HWND hwndPB;
-HWND hwndPBLabel;
+HWND hwndLabelStatus;
+HWND hwndLabel;
+HWND hwndBTN_Yes;
+HWND hwndBTN_No;
+HWND hwndBTN_Close;
+HWND hwndBTN_Retry;
+RECT clientRect;
 char *targetZIPFile = NULL;
 char *targetZIPFileSizeDesc = NULL;
 char* uploadReference = NULL;
+
+int windowWidth = 400;
+int windowHeight = 200;
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -95,6 +105,8 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 	UploadInProgress = TRUE;
 	SetTimer(hWnd, 2, 100, NULL);	
 
+	SetWindowText(hwndLabelStatus, _T("Step 3 of 3"));
+
 	RECT client_rectangle;
 	GetClientRect(hwndParent, &client_rectangle);
 	int width = client_rectangle.right - client_rectangle.left;
@@ -113,13 +125,13 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 	SendMessage(hwndPB, PBM_SETPOS, 0, 0);
 	//SendMessage(hwndPB, PBM_SETMARQUEE, 1, 0);
 
-	hwndPBLabel = CreateWindow(
+	hwndLabel = CreateWindow(
                         TEXT("STATIC"),                   /*The name of the static control's class*/
-                        TEXT("Uploading files..."),                  /*Label's Text*/
-                        WS_CHILD | WS_VISIBLE | SS_LEFT,  /*Styles (continued)*/
-                        (width-120)/2,                                /*X co-ordinates*/
+                        TEXT("Sending logs to PrintNode..."),                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
                         (height/2)-20,                                /*Y co-ordinates*/
-                        120,                               /*Width*/
+                        width,                               /*Width*/
                         25,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
                         NULL,              /*The Label's ID*/
@@ -143,7 +155,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 	HINTERNET hRequest = NULL;
 	char* buffer = NULL;
 
-	hSession = InternetOpen(L"MyAgent",INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+	hSession = InternetOpen(L"dev prototype - ignore",INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
     if(hSession==NULL)
     {
 		//cout<<"Error: InternetOpen";  
@@ -325,13 +337,13 @@ void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
 	//SendMessage(hwndPB, PBM_SETPOS, 0, 0);
 	SendMessage(hwndPB, PBM_SETMARQUEE, 1, 0);
 
-	hwndPBLabel = CreateWindow(
+	hwndLabel = CreateWindow(
                         TEXT("STATIC"),                   /*The name of the static control's class*/
-                        TEXT("Preparing files for upload..."),                  /*Label's Text*/
-                        WS_CHILD | WS_VISIBLE | SS_LEFT,  /*Styles (continued)*/
-                        (width-180)/2,                                /*X co-ordinates*/
+                        TEXT("Searching for PrintNode log files. Please wait ..."),                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
                         (height/2)-20,                                /*Y co-ordinates*/
-                        180,                               /*Width*/
+                        width,                               /*Width*/
                         25,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
                         NULL,              /*The Label's ID*/
@@ -359,6 +371,7 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 		struct stat sb;
 		if (stat(folderToCompress, &sb) == 0 && S_ISDIR(sb.st_mode)) // Check if target folder exists to zip up
 		{
+			FolderFound = TRUE;
 			targetZIPFile = (char *)malloc( 1024 );
 			wcstombs(targetZIPFile, userFolder, 1024);
 			strcat(targetZIPFile, "\\.printnodeArchive.zip");
@@ -509,12 +522,12 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.cbClsExtra		= 0;
 	wcex.cbWndExtra		= 0;
 	wcex.hInstance		= hInstance;
-	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_LOGUPLOADER_WIN32));
+	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW+1);
 	wcex.lpszMenuName	= 0;//MAKEINTRESOURCE(IDC_LOGUPLOADER_WIN32);
 	wcex.lpszClassName	= szWindowClass;
-	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 
 	return RegisterClassEx(&wcex);
 }
@@ -602,18 +615,44 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	
    hInst = hInstance; // Store instance handle in our global variable
 
-   int windowWidth = 400;
-   int windowHeight = 200;
    const int windowXPos = (GetSystemMetrics(SM_CXSCREEN) - windowWidth) / 2;
    const int windowYPos = (GetSystemMetrics(SM_CYSCREEN) - windowHeight) / 2;
 
-   hWnd = CreateWindow(szWindowClass, L"Log Uploader", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+   hWnd = CreateWindow(szWindowClass, L"PrintNode Crash Reporter Tool v1.0", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
       windowXPos, windowYPos, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
    {
       return FALSE;
    }
+
+   GetClientRect(hWnd, &clientRect);
+
+	hwndLabelStatus = CreateWindow(
+						TEXT("STATIC"),                   /*The name of the static control's class*/
+						TEXT("Step 1 of 3"),                  /*Label's Text*/
+						WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+						0,                                /*X co-ordinates*/
+						10,                                /*Y co-ordinates*/
+						clientRect.right-clientRect.left,                               /*Width*/
+						25,                               /*Height*/
+						hWnd,                             /*Parent HWND*/
+						NULL,              /*The Label's ID*/
+						hInstance,                        /*The HINSTANCE of your program*/ 
+						NULL); 
+
+	CreateWindow(
+		TEXT("STATIC"),                   /*The name of the static control's class*/
+		TEXT("Step 1 of 3"),                  /*Label's Text*/
+		WS_CHILD | WS_VISIBLE | SS_LEFT | SS_GRAYFRAME,  /*Styles (continued)*/
+		5,                                /*X co-ordinates*/
+		5,                                /*Y co-ordinates*/
+		clientRect.right-clientRect.left-10,                               /*Width*/
+		28,                               /*Height*/
+		hWnd,                             /*Parent HWND*/
+		NULL,              /*The Label's ID*/
+		hInstance,                        /*The HINSTANCE of your program*/ 
+		NULL);  
 
    ProcessZipAction(hWnd, hInstance);
 
@@ -641,6 +680,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch (message)
 	{
+	case WM_CREATE:
+		{
+
+		
+		}
+		break;
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam);
 		wmEvent = HIWORD(wParam);
@@ -652,6 +697,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
+			break;
+		case IDC_CLOSE:
+		case IDC_NO:
+			PostQuitMessage(1);
+			break;
+		case IDC_YES:
+			DestroyWindow(hwndBTN_Yes);
+			DestroyWindow(hwndBTN_No);
+			DestroyWindow(hwndLabel);
+			ProcessUploadAction(hWnd, hInst);
+			break;
+		case IDC_RETRY:
+			DestroyWindow(hwndBTN_Close);
+			DestroyWindow(hwndBTN_Retry);
+			DestroyWindow(hwndLabel);
+			ProcessUploadAction(hWnd, hInst);
 			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
@@ -673,35 +734,196 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				KillTimer(hWnd, 1);
 				if (FolderCompressionSuccess)
 				{
+					DestroyWindow(hwndPB);
+					DestroyWindow(hwndLabel);
+
+					SetWindowText(hwndLabelStatus, _T("Step 2 of 3"));
+
 					char msg[1024];
-					sprintf(msg,"Are you ready to upload the log files?\n\nUpload Size: %s", targetZIPFileSizeDesc);
+					sprintf(msg,"Found %s PrintNode log files.\nWould you like to send these to PrintNode?", targetZIPFileSizeDesc);
 
 					wchar_t wtext[1024];
 					mbstowcs(wtext, msg, strlen(msg)+1);
+
+					int clientWidth = clientRect.right-clientRect.left;
+					int clientHeight = clientRect.bottom-clientRect.top;
+
+					hwndLabel = CreateWindow(
+                        TEXT("STATIC"),                   /*The name of the static control's class*/
+                        wtext,                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
+						(clientHeight/2)-25,                                /*Y co-ordinates*/
+						clientWidth,                               /*Width*/
+                        50,                               /*Height*/
+                        hWnd,                             /*Parent HWND*/
+                        NULL,              /*The Label's ID*/
+                        hInst,                        /*The HINSTANCE of your program*/ 
+                        NULL);                            /*Parameters for main window*/
+
+					hwndBTN_Yes = CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"YES",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-210,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_YES,
+							hInst,
+							NULL);
+
+				   hwndBTN_No = CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"NO",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-105,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_NO,
+							hInst,
+							NULL);
+
+					/*
 					if (MessageBox(hWnd, wtext, L"Upload Confirmation", MB_YESNO | MB_ICONQUESTION) == IDYES)
 					{
 						DestroyWindow(hwndPB);
-						DestroyWindow(hwndPBLabel);
+						DestroyWindow(hwndLabel);
 						ProcessUploadAction(hWnd, hInst);
 					}
 					else PostQuitMessage(1);
+					*/
 				}
 				else
 				{
+					DestroyWindow(hwndPB);
+					DestroyWindow(hwndLabel);
+
+					int clientWidth = clientRect.right-clientRect.left;
+					int clientHeight = clientRect.bottom-clientRect.top;
+
+					CreateWindow(
+                        TEXT("STATIC"),                   /*The name of the static control's class*/
+                        L"No logs were found.",                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
+						(clientHeight/2)-12,                                /*Y co-ordinates*/
+						clientWidth,                               /*Width*/
+                        25,                               /*Height*/
+                        hWnd,                             /*Parent HWND*/
+                        NULL,              /*The Label's ID*/
+                        hInst,                        /*The HINSTANCE of your program*/ 
+                        NULL);                            /*Parameters for main window*/
+					
+					CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"CLOSE",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-105,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_CLOSE,
+							hInst,
+							NULL);
 				}
 			}
 		}
 		else if (wParam == 2) {
 			if (!UploadInProgress) {
 				KillTimer(hWnd, 2);
+				SendMessage(hwndPB, PBM_SETPOS, 100, 0);
 				if (UploadSuccess)
 				{
+					DestroyWindow(hwndPB);
+					DestroyWindow(hwndLabel);
+
 					char msg[1024];
 					wchar_t wtext[1024];
-					sprintf(msg,"Thank you for your upload.\n\nReference Number: %s", uploadReference);
+					sprintf(msg,"Logs sent successfully.\nYour reference number is %s", uploadReference);
 					mbstowcs(wtext, msg, strlen(msg)+1);
-					MessageBox(hWnd, wtext, L"Upload Complete", MB_OK);
-					PostQuitMessage(1);
+
+					int clientWidth = clientRect.right-clientRect.left;
+					int clientHeight = clientRect.bottom-clientRect.top;
+
+					hwndLabel = CreateWindow(
+                        TEXT("STATIC"),                   /*The name of the static control's class*/
+                        wtext,                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
+						(clientHeight/2)-25,                                /*Y co-ordinates*/
+						clientWidth,                               /*Width*/
+                        50,                               /*Height*/
+                        hWnd,                             /*Parent HWND*/
+                        NULL,              /*The Label's ID*/
+                        hInst,                        /*The HINSTANCE of your program*/ 
+                        NULL);                            /*Parameters for main window*/
+					
+					CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"CLOSE",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-105,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_CLOSE,
+							hInst,
+							NULL);
+					//MessageBox(hWnd, wtext, L"Upload Complete", MB_OK);
+					//PostQuitMessage(1);
+				}
+				else
+				{
+					DestroyWindow(hwndPB);
+					DestroyWindow(hwndLabel);
+
+					int clientWidth = clientRect.right-clientRect.left;
+					int clientHeight = clientRect.bottom-clientRect.top;
+
+					hwndLabel = CreateWindow(
+                        TEXT("STATIC"),                   /*The name of the static control's class*/
+                        L"We're sorry, but there was a problem during your upload.",                  /*Label's Text*/
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
+                        0,                                /*X co-ordinates*/
+						(clientHeight/2)-12,                                /*Y co-ordinates*/
+						clientWidth,                               /*Width*/
+                        25,                               /*Height*/
+                        hWnd,                             /*Parent HWND*/
+                        NULL,              /*The Label's ID*/
+                        hInst,                        /*The HINSTANCE of your program*/ 
+                        NULL);
+
+					hwndBTN_Retry = CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"RETRY",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-215,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_RETRY,
+							hInst,
+							NULL);
+
+					hwndBTN_Close = CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"CLOSE",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							clientRect.right-105,
+							clientRect.bottom-29,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_CLOSE,
+							hInst,
+							NULL);
 				}
 			}
 			else

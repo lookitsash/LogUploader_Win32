@@ -16,13 +16,13 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
-    <None Include="small.ico">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="LogUploader_Win32.ico">
-      <Filter>Resource Files</Filter>
-    </None>
     <None Include="DevelopmentNotes.txt" />
+    <None Include="E:\Downloads\LogUploader_Win32.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="icon1.ico">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
