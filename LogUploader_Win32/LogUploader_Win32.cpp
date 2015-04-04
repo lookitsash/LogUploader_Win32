@@ -144,9 +144,9 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 
 DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 {
-	char postDataHead[] = "-----------------------------7d82751e2bc0858\nContent-Disposition: form-data; name=\"uploadedfile\"; filename=\".printnodeArchive.zip\"\nContent-Type: application/binary\n\n";
-	char postDataTail[] = "\n-----------------------------7d82751e2bc0858--"; 
-    static TCHAR hdrs[] = L"Content-Type: multipart/form-data; boundary=---------------------------7d82751e2bc0858"; 
+	//char postDataHead[] = "-----------------------------7d82751e2bc0858\nContent-Disposition: form-data; name=\"uploadedfile\"; filename=\".printnodeArchive.zip\"\nContent-Type: application/binary\n\n";
+	//char postDataTail[] = "\n-----------------------------7d82751e2bc0858--"; 
+    //static TCHAR hdrs[] = L"Content-Type: multipart/form-data; boundary=---------------------------7d82751e2bc0858"; 
 
 	BOOL success = TRUE;
 
@@ -164,7 +164,9 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 	if (success)
 	{
-		hConnect = InternetConnect(hSession, L"localhost",50302, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
+		//hConnect = InternetConnect(hSession, L"localhost",50302, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
+		hConnect = InternetConnect(hSession, L"client.printnode.com",INTERNET_DEFAULT_HTTPS_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
+
 		if(hConnect==NULL)
 		{
 			//cout<<"Error: InternetConnect";  
@@ -173,7 +175,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 		if (success)
 		{
-			hRequest = HttpOpenRequest(hConnect, L"POST",L"/Default.aspx", NULL, NULL, NULL, 0, 1);
+			hRequest = HttpOpenRequest(hConnect, L"POST",L"/logs/submit", HTTP_VERSION, NULL, NULL, INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID, 1);
 			if(hRequest==NULL)
 			{
 				//cout<<"Error: HttpOpenRequest";  
@@ -193,20 +195,9 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 					buffer = (char*)malloc(fileSize);
 					fread(buffer, sizeof(char), fileSize, f);
 					fclose(f);
-					/*
-					long bufferLen = len+strlen(frmdataPrefix)+strlen(frmdataSuffix)+2;
-					buffer = (char*)malloc(bufferLen);
-	
-					char* bufferPtr = buffer;
-					sprintf(bufferPtr,"%s",frmdataPrefix);
-					bufferPtr += strlen(frmdataPrefix);
-					fread(bufferPtr, sizeof(char), len, f);
-					bufferPtr += len;
-					sprintf(bufferPtr,"%s",frmdataSuffix);
-					fclose(f);
-					*/
-					//BOOL sent = HttpSendRequest(hRequest, hdrs, lstrlen(hdrs), buffer, bufferLen-2);
-					//BOOL sent = HttpSendRequestEx(hRequest,
+
+					wchar_t hdrs[1024];
+					swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\n", fileSize);
 
 					// prepare headers
 					success = HttpAddRequestHeaders(hRequest, hdrs, -1, HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDREQ_FLAG_ADD); 
@@ -217,19 +208,18 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 						INTERNET_BUFFERS bufferIn;
 
 						DWORD bytesWritten;
-						//InternetWriteFile(hRequest, buffer, bufferLen-2, &bytesWritten);
 
 						memset(&bufferIn, 0, sizeof(INTERNET_BUFFERS));
 
 						bufferIn.dwStructSize  = sizeof(INTERNET_BUFFERS);
-						bufferIn.dwBufferTotal = strlen(postDataHead) + fileSize + strlen(postDataTail);
+						bufferIn.dwBufferTotal = fileSize; //strlen(postDataHead) + fileSize + strlen(postDataTail);
 
 						success = HttpSendRequestEx(hRequest, &bufferIn, NULL, HSR_INITIATE, 0);
 
 						if (success)
 						{
 							// 1. stream header
-							success = InternetWriteFile(hRequest, (const void*)postDataHead, strlen(postDataHead), &bytesWritten);
+							//success = InternetWriteFile(hRequest, (const void*)postDataHead, strlen(postDataHead), &bytesWritten);
 						}
 
 						if (success)
@@ -241,6 +231,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 							while (bytesSent < fileSize)
 							{
 								long chunkSize = min(maxChunkSize,fileSize - bytesSent);
+								// 2. stream attachment
 								success = InternetWriteFile(hRequest, (const void*)bufferPtr, chunkSize, &bytesWritten);
 								bytesSent += chunkSize;
 
@@ -250,16 +241,12 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 								if (bytesSent < fileSize) bufferPtr += chunkSize;
 							}
 							SendMessage(hwndPB, PBM_SETPOS, 100, 0);
-							
-							// 2. stream contents (binary data)
-							//success = InternetWriteFile(hRequest, (const void*)buffer, fileSize, &bytesWritten);
-							// or a while loop for call InternetWriteFile every 1024 bytes...
 						}
 
 						if (success)
 						{
 							// 3. stream tailer
-							success = InternetWriteFile(hRequest, (const void*)postDataTail, strlen(postDataTail), &bytesWritten);
+							//success = InternetWriteFile(hRequest, (const void*)postDataTail, strlen(postDataTail), &bytesWritten);
 						}
 
 						if (success)
@@ -270,11 +257,17 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 						if(success)
 						{
+							uploadReference = (char*)malloc(1024);
+							DWORD dwRead;
+							InternetReadFile(hRequest, uploadReference, 4096, &dwRead);
+							uploadReference[dwRead] = 0;
+
+							/*
+							// USE IF RESPONSE NEEDS TO BE PARSED AS JSON TOKENS
 							char* responseBuffer = (char*)malloc(4096);
 							DWORD dwRead;
 							InternetReadFile(hRequest, responseBuffer, 4096, &dwRead);
 							responseBuffer[dwRead] = 0;
-
 							jsmn_parser p;
 							jsmntok_t tokens[128];
 
@@ -293,6 +286,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 							else success = FALSE;
 
 							free(responseBuffer);
+							*/							
 						}
 					}
 				}
@@ -786,6 +780,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							(HMENU)IDC_NO,
 							hInst,
 							NULL);
+
+				   //Button_SetState(hwndBTN_Yes, TRUE);
+
+				   SendMessage(hwndBTN_Yes, BM_SETSTATE, TRUE, 0) ;
 
 					/*
 					if (MessageBox(hWnd, wtext, L"Upload Confirmation", MB_YESNO | MB_ICONQUESTION) == IDYES)
