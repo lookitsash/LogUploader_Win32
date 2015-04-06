@@ -3,12 +3,13 @@
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' " \
 "version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-
+#pragma comment( lib, "Msimg32.lib")
 
 #include "stdafx.h"
 #include "LogUploader_Win32.h"
 #include <shlobj.h>
 #include <stdio.h>
+#include <sys\timeb.h> 
 
 #include <iostream>
 #include <stdlib.h>
@@ -75,6 +76,12 @@ RECT clientRect;
 char *targetZIPFile = NULL;
 char *targetZIPFileSizeDesc = NULL;
 char* uploadReference = NULL;
+char* uploadStatus = NULL;
+
+HBITMAP bmpStep1;
+HBITMAP bmpStep2;
+HBITMAP bmpStep3;
+HBITMAP bmpStep4;
 
 int windowWidth = 400;
 int windowHeight = 200;
@@ -91,6 +98,7 @@ mz_bool AddFolderToZipArchive(mz_zip_archive* zipArchive, const char *path, cons
 DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg);
 DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg);
 void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance);
+void SetStep(int stepNum);
 
 static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
 	if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
@@ -105,7 +113,8 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 	UploadInProgress = TRUE;
 	SetTimer(hWnd, 2, 100, NULL);	
 
-	SetWindowText(hwndLabelStatus, _T("Step 3 of 3"));
+	//SetWindowText(hwndLabelStatus, _T("Step 3 of 3"));
+	SetStep(3);
 
 	RECT client_rectangle;
 	GetClientRect(hwndParent, &client_rectangle);
@@ -125,18 +134,35 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 	SendMessage(hwndPB, PBM_SETPOS, 0, 0);
 	//SendMessage(hwndPB, PBM_SETMARQUEE, 1, 0);
 
+	uploadStatus = (char*)malloc(1024);
+	uploadStatus[0] = NULL;
+	sprintf(uploadStatus, "Sending logs to PrintNode...\n\n\n%s","");
+
 	hwndLabel = CreateWindow(
                         TEXT("STATIC"),                   /*The name of the static control's class*/
                         TEXT("Sending logs to PrintNode..."),                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-                        (height/2)-20,                                /*Y co-ordinates*/
+                        (height/2)-17,                                /*Y co-ordinates*/
                         width,                               /*Width*/
-                        25,                               /*Height*/
+                        100,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
                         NULL,              /*The Label's ID*/
                         hInstance,                        /*The HINSTANCE of your program*/ 
                         NULL);                            /*Parameters for main window*/
+
+	hwndBTN_Close = CreateWindowEx(NULL, 
+							L"BUTTON",
+							L"Cancel",
+							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
+							((clientRect.right-clientRect.left)/2)-50,
+							((clientRect.bottom-clientRect.top)/2)+55,
+							100,
+							24,
+							hWnd,
+							(HMENU)IDC_CLOSE,
+							hInst,
+							NULL);
 
 	DWORD ThreadId;
 	CreateThread(NULL,0,ThreadRoutine_Upload,NULL,0,&ThreadId);
@@ -166,6 +192,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 	{
 		//hConnect = InternetConnect(hSession, L"localhost",50302, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
 		hConnect = InternetConnect(hSession, L"client.printnode.com",INTERNET_DEFAULT_HTTPS_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
+		//hConnect = InternetConnect(hSession, L"www.shirtsinbulk.com",INTERNET_DEFAULT_HTTPS_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 1);
 
 		if(hConnect==NULL)
 		{
@@ -176,6 +203,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 		if (success)
 		{
 			hRequest = HttpOpenRequest(hConnect, L"POST",L"/logs/submit", HTTP_VERSION, NULL, NULL, INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID, 1);
+			//hRequest = HttpOpenRequest(hConnect, L"POST",L"/Checkout/CheckoutLogin.aspx", HTTP_VERSION, NULL, NULL, INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID, 1);
 			if(hRequest==NULL)
 			{
 				//cout<<"Error: HttpOpenRequest";  
@@ -196,7 +224,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 					fread(buffer, sizeof(char), fileSize, f);
 					fclose(f);
 
-					wchar_t hdrs[1024];
+					static wchar_t hdrs[1024];
 					swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\n", fileSize);
 
 					// prepare headers
@@ -228,12 +256,35 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 							long maxChunkSize = 4096;
 							long bytesSent = 0;
 							char* bufferPtr = buffer;
+							struct timeb start, end;
+							ftime(&start);
 							while (bytesSent < fileSize)
 							{
+								//ftime(&start);
 								long chunkSize = min(maxChunkSize,fileSize - bytesSent);
 								// 2. stream attachment
 								success = InternetWriteFile(hRequest, (const void*)bufferPtr, chunkSize, &bytesWritten);
 								bytesSent += chunkSize;
+
+								ftime(&end);
+								double curTimeElapsedMs = max((1000.0 * (end.time - start.time) + (end.millitm - start.millitm)),1.0);
+								//if (curTimeElapsedMs > 2000)
+								//{
+									double curTimeSec = curTimeElapsedMs/1000.0;
+									double bytesPerSec = ((double)bytesSent / curTimeSec);
+									//double kbytesPerSec = ((double)bytesSent / curTimeSec) / 1024.0;
+									long remainingBytes = fileSize - bytesSent;
+									int remainingSec = (int)((double)remainingBytes / bytesPerSec);
+									int remainingMin = (int)((double)remainingSec / 60.0);
+									int remainingHr = (int)((double)remainingMin / 60.0);
+									if (remainingHr > 0) sprintf(uploadStatus, "Sending logs to PrintNode...\n\n\n      Time left: %i hour(s)      ",remainingHr);
+									else if (remainingMin > 0) sprintf(uploadStatus, "Sending logs to PrintNode...\n\n\n      Time left: %i min(s)      ",remainingMin);
+									else sprintf(uploadStatus, "Sending logs to PrintNode...\n\n\n      Time left: %i sec      ",remainingSec);
+
+									wchar_t wtext[1024];
+									mbstowcs(wtext, uploadStatus, strlen(uploadStatus)+1);
+									SetWindowText(hwndLabel, wtext);
+								//}
 
 								int percent = (int)(((double)bytesSent / (double)fileSize) * 100.0);
 								SendMessage(hwndPB, PBM_SETPOS, percent, 0);
@@ -257,9 +308,9 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 						if(success)
 						{
-							uploadReference = (char*)malloc(1024);
+							uploadReference = (char*)malloc(4096);
 							DWORD dwRead;
-							InternetReadFile(hRequest, uploadReference, 4096, &dwRead);
+							InternetReadFile(hRequest, uploadReference, 4095, &dwRead);
 							uploadReference[dwRead] = 0;
 
 							/*
@@ -333,12 +384,12 @@ void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
 
 	hwndLabel = CreateWindow(
                         TEXT("STATIC"),                   /*The name of the static control's class*/
-                        TEXT("Searching for PrintNode log files. Please wait ..."),                  /*Label's Text*/
+                        TEXT("Building log files.\n\n\nPlease wait ..."),                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-                        (height/2)-20,                                /*Y co-ordinates*/
+                        (height/2)-17,                                /*Y co-ordinates*/
                         width,                               /*Width*/
-                        25,                               /*Height*/
+                        100,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
                         NULL,              /*The Label's ID*/
                         hInstance,                        /*The HINSTANCE of your program*/ 
@@ -369,7 +420,7 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 			targetZIPFile = (char *)malloc( 1024 );
 			wcstombs(targetZIPFile, userFolder, 1024);
 			strcat(targetZIPFile, "\\.printnodeArchive.zip");
-			
+
 			FolderCompressionSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
 			if (FolderCompressionSuccess)
 			{
@@ -612,7 +663,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    const int windowXPos = (GetSystemMetrics(SM_CXSCREEN) - windowWidth) / 2;
    const int windowYPos = (GetSystemMetrics(SM_CYSCREEN) - windowHeight) / 2;
 
-   hWnd = CreateWindow(szWindowClass, L"PrintNode Crash Reporter Tool v1.0", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+   hWnd = CreateWindow(szWindowClass, L"PrintNode Crash Reporter v1.0", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
       windowXPos, windowYPos, windowWidth, windowHeight, NULL, NULL, hInstance, NULL);
 
    if (!hWnd)
@@ -621,32 +672,60 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    }
 
    GetClientRect(hWnd, &clientRect);
-
+   /*
 	hwndLabelStatus = CreateWindow(
-						TEXT("STATIC"),                   /*The name of the static control's class*/
-						TEXT("Step 1 of 3"),                  /*Label's Text*/
-						WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
-						0,                                /*X co-ordinates*/
-						10,                                /*Y co-ordinates*/
-						clientRect.right-clientRect.left,                               /*Width*/
-						25,                               /*Height*/
-						hWnd,                             /*Parent HWND*/
-						NULL,              /*The Label's ID*/
-						hInstance,                        /*The HINSTANCE of your program*/ 
+						TEXT("STATIC"),        
+						TEXT("Step 1 of 3"),   
+						WS_CHILD | WS_VISIBLE | SS_CENTER,
+						0,                                
+						10,                               
+						clientRect.right-clientRect.left, 
+						25,                               
+						hWnd,                             
+						NULL,  
+						hInstance,
 						NULL); 
-
+						*/
+	/*
 	CreateWindow(
-		TEXT("STATIC"),                   /*The name of the static control's class*/
-		TEXT("Step 1 of 3"),                  /*Label's Text*/
-		WS_CHILD | WS_VISIBLE | SS_LEFT | SS_GRAYFRAME,  /*Styles (continued)*/
-		5,                                /*X co-ordinates*/
-		5,                                /*Y co-ordinates*/
-		clientRect.right-clientRect.left-10,                               /*Width*/
-		28,                               /*Height*/
-		hWnd,                             /*Parent HWND*/
-		NULL,              /*The Label's ID*/
-		hInstance,                        /*The HINSTANCE of your program*/ 
+		TEXT("STATIC"),               
+		TEXT("Step 1 of 3"),          
+		WS_CHILD | WS_VISIBLE | SS_LEFT | SS_GRAYFRAME,  
+		5,                                
+		5,                                
+		clientRect.right-clientRect.left-10,
+		28,                               
+		hWnd,                             
+		NULL,
+		hInstance,
 		NULL);  
+*/
+	//HWND hImage = LoadImage(NULL, file, IMAGE_BITMAP, w, h, LR_LOADFROMFILE);
+	//SendMessage(hwnd, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hImage);
+
+   HBRUSH brush = CreateSolidBrush(RGB(255, 255, 255));
+   SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG)brush);
+
+   //hbSymbol = LoadBitmap( GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_BITMAP1) );
+   
+   
+	HWND hwndBitmapSteps = CreateWindowEx(
+               0, 
+               TEXT("STATIC"), 
+               NULL, 
+               WS_CHILD|WS_VISIBLE|SS_BITMAP,
+               ((clientRect.right-clientRect.left)-182)/2, 30, 0, 0,
+               hWnd, 
+               (HMENU)IDW_STEPS, 
+               hInstance,
+               NULL
+               );
+
+	bmpStep1 = LoadBitmap(hInstance, MAKEINTRESOURCE(IDB_BITMAP1));
+	bmpStep2 = LoadBitmap(hInstance, MAKEINTRESOURCE(IDB_BITMAP2));
+	bmpStep3 = LoadBitmap(hInstance, MAKEINTRESOURCE(IDB_BITMAP3));
+	bmpStep4 = LoadBitmap(hInstance, MAKEINTRESOURCE(IDB_BITMAP4));
+	SetStep(1);
 
    ProcessZipAction(hWnd, hInstance);
 
@@ -654,6 +733,14 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    UpdateWindow(hWnd);
 
    return TRUE;
+}
+
+void SetStep(int stepNum)
+{
+	if (stepNum == 1) SendDlgItemMessage(hWnd, IDW_STEPS, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)bmpStep1);
+	else if (stepNum == 2) SendDlgItemMessage(hWnd, IDW_STEPS, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)bmpStep2);
+	else if (stepNum == 3) SendDlgItemMessage(hWnd, IDW_STEPS, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)bmpStep3);
+	else if (stepNum == 4) SendDlgItemMessage(hWnd, IDW_STEPS, STM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)bmpStep4);
 }
 
 //
@@ -731,10 +818,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					DestroyWindow(hwndPB);
 					DestroyWindow(hwndLabel);
 
-					SetWindowText(hwndLabelStatus, _T("Step 2 of 3"));
+					//SetWindowText(hwndLabelStatus, _T("Step 2 of 3"));
+					SetStep(2);
 
 					char msg[1024];
-					sprintf(msg,"Found %s PrintNode log files.\nWould you like to send these to PrintNode?", targetZIPFileSizeDesc);
+					sprintf(msg,"Found %s log files.\nWould you like to send these to PrintNode?", targetZIPFileSizeDesc);
 
 					wchar_t wtext[1024];
 					mbstowcs(wtext, msg, strlen(msg)+1);
@@ -757,10 +845,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					hwndBTN_Yes = CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"YES",
+							L"Yes",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-210,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)+2,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,
@@ -770,10 +858,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 				   hwndBTN_No = CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"NO",
+							L"Not now",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-105,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)-102,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,
@@ -818,10 +906,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					
 					CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"CLOSE",
+							L"Exit",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-105,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)-50,
+							((clientRect.bottom-clientRect.top)/2)+55,
 							100,
 							24,
 							hWnd,
@@ -837,36 +925,39 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SendMessage(hwndPB, PBM_SETPOS, 100, 0);
 				if (UploadSuccess)
 				{
+					SetStep(4);
+
+					DestroyWindow(hwndBTN_Close);
 					DestroyWindow(hwndPB);
 					DestroyWindow(hwndLabel);
-
-					char msg[1024];
-					wchar_t wtext[1024];
-					sprintf(msg,"Logs sent successfully.\nYour reference number is %s", uploadReference);
+					
+					char msg[4096];
+					wchar_t wtext[4096];
+					sprintf(msg,"Thank you! Logs sent successfully.\nYour reference number is %s", uploadReference);
 					mbstowcs(wtext, msg, strlen(msg)+1);
 
 					int clientWidth = clientRect.right-clientRect.left;
 					int clientHeight = clientRect.bottom-clientRect.top;
 
 					hwndLabel = CreateWindow(
-                        TEXT("STATIC"),                   /*The name of the static control's class*/
-                        wtext,                  /*Label's Text*/
-                        WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
-                        0,                                /*X co-ordinates*/
-						(clientHeight/2)-25,                                /*Y co-ordinates*/
-						clientWidth,                               /*Width*/
-                        50,                               /*Height*/
-                        hWnd,                             /*Parent HWND*/
-                        NULL,              /*The Label's ID*/
-                        hInst,                        /*The HINSTANCE of your program*/ 
-                        NULL);                            /*Parameters for main window*/
+                        TEXT("STATIC"),                 
+                        wtext,                  
+                        WS_CHILD | WS_VISIBLE | SS_CENTER,  
+                        0,                                
+						(clientHeight/2)-10,              
+						clientWidth,                      
+                        50,                               
+                        hWnd,                             
+                        NULL,
+                        hInst,
+                        NULL);
 					
 					CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"CLOSE",
+							L"Exit",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-105,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)-50,
+							((clientRect.bottom-clientRect.top)/2)+55,
 							100,
 							24,
 							hWnd,
@@ -878,6 +969,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 				else
 				{
+					DestroyWindow(hwndBTN_Close);
 					DestroyWindow(hwndPB);
 					DestroyWindow(hwndLabel);
 
@@ -899,10 +991,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					hwndBTN_Retry = CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"RETRY",
+							L"Retry",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-215,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)+2,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,
@@ -912,10 +1004,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					hwndBTN_Close = CreateWindowEx(NULL, 
 							L"BUTTON",
-							L"CLOSE",
+							L"Exit",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
-							clientRect.right-105,
-							clientRect.bottom-29,
+							((clientRect.right-clientRect.left)/2)-102,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,

@@ -80,6 +80,10 @@
       <DeploymentContent>true</DeploymentContent>
     </None>
     <None Include="icon1.ico" />
+    <None Include="PrintNodeSteps_1.bmp" />
+    <None Include="PrintNodeSteps_2.bmp" />
+    <None Include="PrintNodeSteps_3.bmp" />
+    <None Include="PrintNodeSteps_4.bmp" />
     <None Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
