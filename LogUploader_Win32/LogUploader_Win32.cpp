@@ -226,6 +226,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 					static wchar_t hdrs[1024];
 					swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\n", fileSize);
+					//swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\nExpect: 100-continue\r\n", fileSize);
 
 					// prepare headers
 					success = HttpAddRequestHeaders(hRequest, hdrs, -1, HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDREQ_FLAG_ADD); 
@@ -312,6 +313,9 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 							DWORD dwRead;
 							InternetReadFile(hRequest, uploadReference, 4095, &dwRead);
 							uploadReference[dwRead] = 0;
+
+							char* pos = strstr(uploadReference,"<html");
+							if (pos != NULL) success = FALSE;
 
 							/*
 							// USE IF RESPONSE NEEDS TO BE PARSED AS JSON TOKENS
