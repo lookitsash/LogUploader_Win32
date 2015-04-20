@@ -24,6 +24,9 @@
 
 #include "dirent.h"
 
+#ifndef WIN32
+#include <unistd.h>
+#endif
 
 #define MAX_LOADSTRING 100
 
@@ -73,10 +76,13 @@ HWND hwndBTN_No;
 HWND hwndBTN_Close;
 HWND hwndBTN_Retry;
 RECT clientRect;
-char *targetZIPFile = NULL;
+//char *targetZIPFile = NULL;
 char *targetZIPFileSizeDesc = NULL;
 char* uploadReference = NULL;
 char* uploadStatus = NULL;
+char* zipArchiveData = NULL;
+long zipArchiveDataSize = 0;
+int httpUploadResponseCode = 0;
 
 HBITMAP bmpStep1;
 HBITMAP bmpStep2;
@@ -93,12 +99,14 @@ LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
 void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance);
-mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile);
+//mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile);
+mz_bool ZipFolder(const char* folderToZip);
 mz_bool AddFolderToZipArchive(mz_zip_archive* zipArchive, const char *path, const char *relativePath);
 DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg);
 DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg);
 void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance);
 void SetStep(int stepNum);
+void sleepcp(int milliseconds);
 
 static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
 	if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
@@ -106,6 +114,15 @@ static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
 		return 0;
 	}
 	return -1;
+}
+
+void sleepcp(int milliseconds) // cross-platform sleep function
+{
+    #ifdef WIN32
+    Sleep(milliseconds);
+    #else
+    usleep(milliseconds * 1000);
+    #endif // win32
 }
 
 void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
@@ -173,13 +190,13 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 	//char postDataHead[] = "-----------------------------7d82751e2bc0858\nContent-Disposition: form-data; name=\"uploadedfile\"; filename=\".printnodeArchive.zip\"\nContent-Type: application/binary\n\n";
 	//char postDataTail[] = "\n-----------------------------7d82751e2bc0858--"; 
     //static TCHAR hdrs[] = L"Content-Type: multipart/form-data; boundary=---------------------------7d82751e2bc0858"; 
-
+	httpUploadResponseCode = 0;
 	BOOL success = TRUE;
 
     HINTERNET hSession = NULL;
 	HINTERNET hConnect = NULL;
 	HINTERNET hRequest = NULL;
-	char* buffer = NULL;
+	//char* buffer = NULL;
 
 	hSession = InternetOpen(L"dev prototype - ignore",INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
     if(hSession==NULL)
@@ -212,9 +229,14 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 			if (success)
 			{
-				FILE *f = fopen(targetZIPFile, "rb");
-				if (f)
+				//FILE *f = fopen(targetZIPFile, "rb");
+				//if (f)
+				if (TRUE)
 				{
+					long fileSize = zipArchiveDataSize;
+					static wchar_t hdrs[1024];
+					swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\n", fileSize);
+					/*
 					long fileSize = 0;
 					fseek(f, 0x00, SEEK_END);
 					fileSize = ftell(f);
@@ -226,7 +248,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 					static wchar_t hdrs[1024];
 					swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\n", fileSize);
-					//swprintf(hdrs,L"Content-Type: application/binary\r\nContent-Length: %d\r\nExpect: 100-continue\r\n", fileSize);
+					*/
 
 					// prepare headers
 					success = HttpAddRequestHeaders(hRequest, hdrs, -1, HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDREQ_FLAG_ADD); 
@@ -256,9 +278,10 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 							SendMessage(hwndPB, PBM_SETPOS, 0, 0);
 							long maxChunkSize = 4096;
 							long bytesSent = 0;
-							char* bufferPtr = buffer;
+							char* bufferPtr = zipArchiveData;
 							struct timeb start, end;
 							ftime(&start);
+							int curPercent = 0;
 							while (bytesSent < fileSize)
 							{
 								//ftime(&start);
@@ -288,7 +311,11 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 								//}
 
 								int percent = (int)(((double)bytesSent / (double)fileSize) * 100.0);
-								SendMessage(hwndPB, PBM_SETPOS, percent, 0);
+								if (percent != curPercent)
+								{
+									SendMessage(hwndPB, PBM_SETPOS, percent, 0);
+									curPercent = percent;
+								}
 								
 								if (bytesSent < fileSize) bufferPtr += chunkSize;
 							}
@@ -311,12 +338,39 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 						{
 							uploadReference = (char*)malloc(4096);
 							DWORD dwRead;
-							InternetReadFile(hRequest, uploadReference, 4095, &dwRead);
+							success = InternetReadFile(hRequest, uploadReference, 4095, &dwRead);
 							uploadReference[dwRead] = 0;
 
-							char* pos = strstr(uploadReference,"<html");
-							if (pos != NULL) success = FALSE;
+							LPVOID lpOutBuffer = NULL;
+							DWORD dwSize = 0;
+							while (!HttpQueryInfo(hRequest,HTTP_QUERY_STATUS_CODE,(LPVOID)lpOutBuffer,&dwSize,NULL))
+							{
+								DWORD dwError = GetLastError();
+								if (dwError == ERROR_INSUFFICIENT_BUFFER)
+								{
+									lpOutBuffer = new wchar_t[dwSize];  
+								}
+								else
+								{
+									//fprintf(stderr, "HttpQueryInfo failed, error = %d (0x%x)\n",GetLastError(), GetLastError());
+									break;
+								}
+							}
+							wchar_t* outBuffer = (wchar_t*)lpOutBuffer;
+							httpUploadResponseCode = _wtoi(outBuffer);
+							delete[] lpOutBuffer;
 
+							if (dwRead == 0) success = FALSE;
+							else
+							{
+								char* pos = strstr(uploadReference,"<html");
+								if (pos != NULL) success = FALSE;
+								else
+								{
+									pos = strstr(uploadReference,"{");
+									if (pos != NULL) success = FALSE;
+								}
+							}
 							/*
 							// USE IF RESPONSE NEEDS TO BE PARSED AS JSON TOKENS
 							char* responseBuffer = (char*)malloc(4096);
@@ -350,7 +404,7 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 		}
 	}
 	
-	if (buffer != NULL) free(buffer);
+	//if (buffer != NULL) free(buffer);
 
     //close any valid internet-handles
     if (hSession != NULL) InternetCloseHandle(hSession);
@@ -359,6 +413,8 @@ DWORD WINAPI ThreadRoutine_Upload(LPVOID lpArg)
 
 	UploadSuccess = success;
 	UploadInProgress = FALSE;
+
+	if (UploadSuccess && zipArchiveData != NULL) free(zipArchiveData);
 
 	return NULL;
 }
@@ -421,13 +477,27 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 		if (stat(folderToCompress, &sb) == 0 && S_ISDIR(sb.st_mode)) // Check if target folder exists to zip up
 		{
 			FolderFound = TRUE;
-			targetZIPFile = (char *)malloc( 1024 );
-			wcstombs(targetZIPFile, userFolder, 1024);
-			strcat(targetZIPFile, "\\.printnodeArchive.zip");
+			//targetZIPFile = (char *)malloc( 1024 );
+			//wcstombs(targetZIPFile, userFolder, 1024);
+			//strcat(targetZIPFile, "\\.printnodeArchive.zip");
 
-			FolderCompressionSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
+			//FolderCompressionSuccess = ZipFolder(folderToCompress, targetZIPFile); // Zip up target folder
+			FolderCompressionSuccess = ZipFolder(folderToCompress); // Zip up target folder
 			if (FolderCompressionSuccess)
 			{
+				long fileSizeBytes = zipArchiveDataSize;
+				double fileSizeKB = (double)fileSizeBytes / 1024.0;
+				targetZIPFileSizeDesc = (char *)malloc( 255 );
+				targetZIPFileSizeDesc[0] = NULL;
+				if (fileSizeBytes < 1024) sprintf(targetZIPFileSizeDesc, "%i bytes", fileSizeBytes);
+				else if (fileSizeKB < 1024) sprintf(targetZIPFileSizeDesc, "%.0f KB", fileSizeKB);
+				else
+				{
+					double fileSizeMB = fileSizeKB / 1024.0;
+					sprintf(targetZIPFileSizeDesc, "%.1f MB", fileSizeMB);
+				}
+				
+				/*
 				if (stat(targetZIPFile, &sb) == 0)
 				{
 					long fileSizeBytes = sb.st_size;
@@ -442,6 +512,7 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 						sprintf(targetZIPFileSizeDesc, "%.1f MB", fileSizeMB);
 					}
 				}
+				*/
 			}
 			//free(targetZIPFile);
 		}
@@ -451,6 +522,7 @@ DWORD WINAPI ThreadRoutine_Zip(LPVOID lpArg)
 		}
 		free(folderToCompress);
 	}
+	Sleep(3000);
 	FolderCompressionInProgress = FALSE;
 
 	return NULL;
@@ -499,16 +571,18 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
 	return (int) msg.wParam;
 }
 
-mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile)
+//mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile)
+mz_bool ZipFolder(const char* folderToZip)
 {
-	remove(targetZIPFile);
+	//remove(targetZIPFile);
 
 	mz_zip_archive zip;
 	memset(&zip, 0, sizeof(zip));
 
 	mz_bool success = MZ_TRUE;
 
-	success &= mz_zip_writer_init_file(&zip, targetZIPFile, 65537);
+	//success &= mz_zip_writer_init_file(&zip, targetZIPFile, 65537);
+	success &= mz_zip_writer_init_heap(&zip, 65537, 65537);
 	if (!success)
 	{
 		//print_error("Failed creating zip archive \"%s\" (1)!\n", pZip_filename);
@@ -521,7 +595,7 @@ mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile)
 	if (!success)
 	{
 		mz_zip_writer_end(&zip);
-		remove(targetZIPFile);
+		//remove(targetZIPFile);
 		//print_error("Failed creating zip archive \"%s\" (2)!\n", pZip_filename);
 		return success;
 	}
@@ -530,18 +604,33 @@ mz_bool ZipFolder(const char* folderToZip, const char *targetZIPFile)
 	if (!success)
 	{
 		mz_zip_writer_end(&zip);
-		remove(targetZIPFile);
+		//remove(targetZIPFile);
 		//print_error("Failed creating zip archive \"%s\" (3)!\n", pZip_filename);
 		return success;
 	}
 
+	zipArchiveDataSize = zip.m_pState->m_mem_size;
+	zipArchiveData = (char*)malloc(zipArchiveDataSize);
+	memcpy(zipArchiveData, zip.m_pState->m_pMem, zipArchiveDataSize);
+	/*
+	FILE *f = fopen(targetZIPFile, "wb");
+	if (f)
+	{
+		fwrite(zip.m_pState->m_pMem, 1, zip.m_pState->m_mem_size, f);
+		fclose(f);
+	}
+	*/
+	//zip.m_pState->
+
 	success &= mz_zip_writer_end(&zip);
 	if (!success)
 	{
-		remove(targetZIPFile);
+		//remove(targetZIPFile);
 		//print_error("Failed creating zip archive \"%s\" (3)!\n", pZip_filename);
 		return success;
 	}
+
+	
 	
 	return success;
 }
@@ -873,8 +962,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							hInst,
 							NULL);
 
-				   //Button_SetState(hwndBTN_Yes, TRUE);
-
 				   SendMessage(hwndBTN_Yes, BM_SETSTATE, TRUE, 0) ;
 
 					/*
@@ -980,14 +1067,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					int clientWidth = clientRect.right-clientRect.left;
 					int clientHeight = clientRect.bottom-clientRect.top;
 
+					char msg[4096];
+					wchar_t wtext[4096];
+					if (httpUploadResponseCode == 0) sprintf(msg,"We're sorry, but there was a problem during your upload.\nThe connection was interrupted.", httpUploadResponseCode);
+					else sprintf(msg,"We're sorry, but there was a problem during your upload.\nServer responded with status code %i.", httpUploadResponseCode);
+					mbstowcs(wtext, msg, strlen(msg)+1);
+
+					// httpUploadResponseCode
+
 					hwndLabel = CreateWindow(
                         TEXT("STATIC"),                   /*The name of the static control's class*/
-                        L"We're sorry, but there was a problem during your upload.",                  /*Label's Text*/
+                        wtext,
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-						(clientHeight/2)-12,                                /*Y co-ordinates*/
+						(clientHeight/2)-10,                                /*Y co-ordinates*/
 						clientWidth,                               /*Width*/
-                        25,                               /*Height*/
+                        50,                               /*Height*/
                         hWnd,                             /*Parent HWND*/
                         NULL,              /*The Label's ID*/
                         hInst,                        /*The HINSTANCE of your program*/ 
