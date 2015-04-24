@@ -2852,7 +2852,8 @@ void *tdefl_write_image_to_png_file_in_memory(const void *pImage, int w, int h, 
     static FILE *mz_fopen(const char *pFilename, const char *pMode)
     {
       FILE* pFile = NULL;
-      fopen_s(&pFile, pFilename, pMode);
+	  pFile = fopen(pFilename, pMode);
+      //fopen_s(&pFile, pFilename, pMode);
       return pFile;
     }
     static FILE *mz_freopen(const char *pPath, const char *pMode, FILE *pStream)

@@ -143,7 +143,7 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
 	hwndPB = CreateWindowEx(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE,    
                                    PROGRESS_CLASS, NULL,   
                                    WS_CHILD | WS_VISIBLE,   
-                                   (width-200)/2, ((height-10)/2)+10, 200,
+                                   (width-200)/2, ((height-10)/2)+7, 200,
                                    20, hwndParent, NULL,   
                                    hInstance, NULL);
 
@@ -160,7 +160,7 @@ void ProcessUploadAction(HWND hwndParent, HINSTANCE hInstance)
                         TEXT("Sending logs to PrintNode..."),                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-                        (height/2)-17,                                /*Y co-ordinates*/
+                        (height/2)-20,                                /*Y co-ordinates*/
                         width,                               /*Width*/
                         100,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
@@ -434,7 +434,7 @@ void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
 	hwndPB = CreateWindowEx(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE,    
                                    PROGRESS_CLASS, NULL,   
                                    WS_CHILD | WS_VISIBLE|PBS_MARQUEE,   
-                                   (width-200)/2, ((height-10)/2)+10, 200,
+                                   (width-200)/2, ((height-10)/2)+7, 200,
                                    20, hwndParent, NULL,   
                                    hInstance, NULL);
 
@@ -447,7 +447,7 @@ void ProcessZipAction(HWND hwndParent, HINSTANCE hInstance)
                         TEXT("Building log files.\n\n\nPlease wait ..."),                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-                        (height/2)-17,                                /*Y co-ordinates*/
+                        (height/2)-20,                                /*Y co-ordinates*/
                         width,                               /*Width*/
                         100,                               /*Height*/
                         hwndParent,                             /*Parent HWND*/
@@ -928,7 +928,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                         wtext,                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-						(clientHeight/2)-25,                                /*Y co-ordinates*/
+						(clientHeight/2)-15,                                /*Y co-ordinates*/
 						clientWidth,                               /*Width*/
                         50,                               /*Height*/
                         hWnd,                             /*Parent HWND*/
@@ -987,7 +987,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                         L"No logs were found.",                  /*Label's Text*/
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-						(clientHeight/2)-12,                                /*Y co-ordinates*/
+						(clientHeight/2)-7,                                /*Y co-ordinates*/
 						clientWidth,                               /*Width*/
                         25,                               /*Height*/
                         hWnd,                             /*Parent HWND*/
@@ -1000,7 +1000,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							L"Exit",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
 							((clientRect.right-clientRect.left)/2)-50,
-							((clientRect.bottom-clientRect.top)/2)+55,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,
@@ -1035,7 +1035,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                         wtext,                  
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  
                         0,                                
-						(clientHeight/2)-10,              
+						(clientHeight/2)-15,              
 						clientWidth,                      
                         50,                               
                         hWnd,                             
@@ -1048,7 +1048,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							L"Exit",
 							WS_TABSTOP|WS_VISIBLE|WS_CHILD,
 							((clientRect.right-clientRect.left)/2)-50,
-							((clientRect.bottom-clientRect.top)/2)+55,
+							((clientRect.bottom-clientRect.top)/2)+40,
 							100,
 							24,
 							hWnd,
@@ -1080,7 +1080,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                         wtext,
                         WS_CHILD | WS_VISIBLE | SS_CENTER,  /*Styles (continued)*/
                         0,                                /*X co-ordinates*/
-						(clientHeight/2)-10,                                /*Y co-ordinates*/
+						(clientHeight/2)-15,                                /*Y co-ordinates*/
 						clientWidth,                               /*Width*/
                         50,                               /*Height*/
                         hWnd,                             /*Parent HWND*/
